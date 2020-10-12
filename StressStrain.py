@@ -14,16 +14,24 @@ class StressStrain:
     #This Cuttoff should be inputted by the user
     stiffness=0.0
     stiffness_error=0.0
-    def __init__(self, data,loadDeflection=False):
+    cylinder=False
+    def __init__(self, data,loadDeflection=False,cylinder=False):
         '''
         Data needs to be passed in as a pandas dataframe with the following column
         order: Load(N),Displacement(mm), and Voltage(mV),L(mm),b(mm),h(mm). If the
         Data is instead in the Load-Displacement Form then it needs to be given in the
-        Displacement(mm), Load(N) order. Indicate Load-Deflection by inputing True
+        Time,Displacement(mm), Load(N) order. Indicate Load-Deflection by inputing True.
+        For Cylindrical Load testing indicate both cylindrical and Load-Deflection
+        are true and input a data frame with columns in the following order
+        Time,Displacement,Load,inner Diameter, Outer Diameter, Length
         '''
         self.data=data#Store the users input
         self.loadDeflection=loadDeflection
-        if self.loadDeflection:
+        self.cylinder=cylinder
+        #We first want to check if we have a cylinder loadDeflection data
+        if self.cylinder:
+            columns=["Time","Displacement(mm)","Load(N)","d(mm)","D(mm)","L(mm)"]
+        elif self.loadDeflection:
             #If we infact have a load-deflection problem we input the data
             #in the follow way
             columns=["Time","Displacement(mm)","Load(N)","L(mm)","b(mm)","h(mm)"]
@@ -40,15 +48,22 @@ class StressStrain:
 
     def momentOfInertia(self):
         #Calculates the Moment of Inertia
-        self.data['Moment of Inertia(m^4)']=((self.data['b(mm)']/1000)*(self.data['h(mm)']/1000)**3)/12
+        if self.cylinder:
+            #If we are dealing with a cylinder
+            self.data['Moment of Inertia(m^4)']=(np.pi/64)*((self.data['D(mm)']/1000)**4-(self.data['d(mm)']/1000)**4)
+        else:
+            self.data['Moment of Inertia(m^4)']=((self.data['b(mm)']/1000)*(self.data['h(mm)']/1000)**3)/12
         return self.data['Moment of Inertia(m^4)']
 
     def maxStress(self):
-        #Calculates the Max Max Strain
-        self.data['Max Stress(Pa)']=(self.maxMoment()*self.data['h(mm)']/1000)/(2*self.momentOfInertia())
+        #Calculates the Max stress
+        if self.cylinder:
+            #If we indeed have a cylinder
+            self.data['Max Stress(Pa)']=(self.maxMoment()*self.data['D(mm)']/1000)/(2*self.momentOfInertia())
+        else:
+            self.data['Max Stress(Pa)']=(self.maxMoment()*self.data['h(mm)']/1000)/(2*self.momentOfInertia())
         return self.data['Max Stress(Pa)']
     def strain(self):
-        #This will return the Strain
         if self.loadDeflection:
             self.data['Strain']=self.maxStress()/self.youngsModulus()
 
@@ -144,10 +159,21 @@ if __name__ == '__main__':
     # print(youngsMod)
 
     #Test for Procedure 2
-    input=pd.read_csv('./Procedure2/Brass1.csv',nrows=92)
-    test=StressStrain(input,loadDeflection=True)
+    # input=pd.read_csv('./Procedure2/Brass1.csv',nrows=92)
+    # test=StressStrain(input,loadDeflection=True)
+    # test.setCutOff(-0.001)#Just to test
+    # stiff=test.getStiffness()
+    # ymod=test.youngsModulus()
+    # print(ymod)
+    # print(test.strain())
+
+    #Test for Procedure 4
+    input=pd.read_csv('./Procedure4/Radius-A.csv',nrows=226)
+    test=StressStrain(input,loadDeflection=True,cylinder=True)
     test.setCutOff(-0.001)#Just to test
     stiff=test.getStiffness()
+
     ymod=test.youngsModulus()
-    print(ymod)
-    print(test.strain())
+    strain=test.strain()
+
+    print(stiff)
