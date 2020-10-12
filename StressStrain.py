@@ -10,21 +10,23 @@ class StressStrain:
     youngsModulus=0.0
     youngError=0.0
     loadDeflection=False
-    cutOff=0.0#This holds the Cuttoff value between Elastic and Plastic regions
+    cutOff=None#This holds the Cuttoff value between Elastic and Plastic regions
     #This Cuttoff should be inputted by the user
+    stiffness=0.0
+    stiffness_error=0.0
     def __init__(self, data,loadDeflection=False):
         '''
         Data needs to be passed in as a pandas dataframe with the following column
         order: Load(N),Displacement(mm), and Voltage(mV),L(mm),b(mm),h(mm). If the
         Data is instead in the Load-Displacement Form then it needs to be given in the
-        Delta(mm), Load(N) order. Indicate Load-Deflection by inputing True
+        Displacement(mm), Load(N) order. Indicate Load-Deflection by inputing True
         '''
         self.data=data#Store the users input
         self.loadDeflection=loadDeflection
         if self.loadDeflection:
             #If we infact have a load-deflection problem we input the data
             #in the follow way
-            columns=["Delta(mm)","Load(N)"]
+            columns=["Time","Displacement(mm)","Load(N)","L(mm)","b(mm)","h(mm)"]
         else:
             #Make sure to set the data correctly
             columns=["Load(N)","Displacement(mm)","Voltage(mV)","L(mm)","b(mm)","h(mm)"]
@@ -45,29 +47,65 @@ class StressStrain:
         #Calculates the Max Max Strain
         self.data['Max Stress(Pa)']=(self.maxMoment()*self.data['h(mm)']/1000)/(2*self.momentOfInertia())
         return self.data['Max Stress(Pa)']
-
     def strain(self):
         #This will return the Strain
-        self.data['Strain']=(self.data['Voltage(mV)']*10)/1000000
-        return self.data['Strain']
+        if self.loadDeflection:
+            self.data['Strain']=self.maxStress()/self.youngsModulus()
 
+        else:
+            self.data['Strain']=(self.data['Voltage(mV)']*10)/1000000
+
+        return self.data['Strain']
 
 
     def youngsModulus(self):
         #This will return the youngsModulus
-        self.maxMoment()
-        self.momentOfInertia()
-        self.maxStress()
-        self.youngsModulus,b,self.youngError,b_error=self.linReg(self.strain(),self.maxStress())
+        if self.loadDeflection:
+            s=self.getStiffness()*(-1)#Run the stiffness method
+
+            #we only want to output the first element of this array since they
+            #are all the same element
+            return ((s*(self.data['L(mm)']/1000)**3)/(48*self.momentOfInertia()))[0]
+        else:
+            self.maxMoment()
+            self.momentOfInertia()
+            self.maxStress()
+            self.youngsModulus,b,self.youngError,b_error=self.linReg(self.strain(),self.maxStress())
         return self.data, self.youngsModulus,b, self.youngError,b_error
 
-    def stiffness(self):
+    def getStiffness(self):
+        if self.cutOff==None:
+            print("A Cuttoff was not enterred")
+        elif not (self.loadDeflection):
+            print("You have not declared this as a Load-Deflection Problem")
+        else:
+            x=[]#This will hold the Displacement values we want based on the Cuttoff
+            y=[]#This will hold the Load Values we want based on the cutoffs we want
+            for i in range(0,len(self.data['Load(N)'])):
+                if self.data['Displacement(mm)'][i]/1000 >= self.cutOff:
+                    x.append(self.data['Displacement(mm)'][i]/1000)#Append the value
+                    y.append(self.data['Load(N)'][i])#Append the y value
+            #Now we can run a linear regression and get the stiffnessa
+            self.stiffness,b,self.stiffness_error,b_error=self.linReg(np.array(x),np.array(y))
+        return self.stiffness
+
+
+
+
+
+
+    def setCutOff(self,cut):
+        #this method will set the cuttoff for the stiffness Calculation
+        self.cutOff=cut
+    def getDeltaLoad(self):
+        #Will return the delta vs load
+        return (self.data['Displacement(mm)']/1000),self.data['Load(N)']
 
 
 
 
     def linReg(self,x,y):
-        '''this function will take as an input two 1D numpy arrays and
+        '''This function will take as an input two 1D numpy arrays and
     will output the linear regression model with errors. Will return a tuple
     of the slope, y-intercept, error of the slope, and error of the y-intercept'''
     #First we will calculate X,Z,N,Y,B
@@ -93,6 +131,9 @@ class StressStrain:
         m_error=np.sqrt((N*sigmaSquared)/delta)
         b_error=np.sqrt((Z*sigmaSquared)/delta)
         return m,b,m_error,b_error
+    def getData(self):
+        #This method will return back the data dataframe
+        return self.data
 
 if __name__ == '__main__':
     # input=pd.read_csv('./Procedure1/Procedure1Brass3.csv',nrows=10)
@@ -103,4 +144,10 @@ if __name__ == '__main__':
     # print(youngsMod)
 
     #Test for Procedure 2
-    input=pd.read_csv('./Procedure2/Brass1.csv',nrows=10)
+    input=pd.read_csv('./Procedure2/Brass1.csv',nrows=92)
+    test=StressStrain(input,loadDeflection=True)
+    test.setCutOff(-0.001)#Just to test
+    stiff=test.getStiffness()
+    ymod=test.youngsModulus()
+    print(ymod)
+    print(test.strain())
