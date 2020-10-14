@@ -115,6 +115,9 @@ class StressStrain:
     def getDeltaLoad(self):
         #Will return the delta vs load
         return (self.data['Displacement(mm)']/1000),self.data['Load(N)']
+    def getStressStrain(self):
+        #Will return the stress Strain
+        return (self.strain(),self.maxStress())
 
 
 
